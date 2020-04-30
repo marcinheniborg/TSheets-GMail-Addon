@@ -19,22 +19,196 @@ var MAX_MESSAGE_LENGTH = 40;
  * Callback for rendering the homepage card.
  * @return {CardService.Card} The card to show to the user.
  */
-function onHomepage(e) {
-  console.log(e);
-  var hour = Number(Utilities.formatDate(new Date(), e.userTimezone.id, 'H'));
-  var message;
-  if (hour >= 6 && hour < 12) {
-    message = 'Good morning';
-  } else if (hour >= 12 && hour < 18) {
-    message = 'Good afternoon';
-  } else {
-    message = 'Good night';
+
+var addOn = {};
+//function onHomepage(e) {
+//  myLog(e);
+//  addOn = new addOnCommon();
+//  let homeCard = addOn.buildHomeCard();
+//  
+//  return homeCard.build();
+//}
+
+class addOnCommon{
+  constructor(){
+    this.cardHeader = {};
+    this.homeCard = {};
+    this.homeCardSection1 = {};
+    this.homeCardSection2 = {};
+    
+    this.db = new dbOperations();
+    
   }
-  message += ' ' + e.hostApp;
-  return createHomeCard();
+  
+   buildHomeCard(selectedCompany){
+    this.buildCardHeader();
+    this.buildHomeCardSection1(selectedCompany);
+    //section 2 is created after the dropdown from section 1 selected action is executed
+    this.homeCard = CardService.newCardBuilder()
+    .setName("Home/Navigation Card")
+    .setHeader(this.cardHeader)
+    .addSection(this.homeCardSection1)
+    
+    //.build();
+  
+    return this.homeCard;
+  }
+  
+  updateCard(card){
+    let nav = CardService.newNavigation().updateCard(card);
+    return CardService.newActionResponseBuilder()
+        .setNavigation(nav)
+        .build();
+  }
+  
+  buildCardHeader(){
+    this.cardHeader = CardService.newCardHeader()
+    .setTitle("Projects")
+    //.setSubtitle("Here you can define a date range which the program will use to pull time sheets from TSheets. ")
+    .setImageStyle(CardService.ImageStyle.CIRCLE)
+    .setImageUrl("https://res-2.cloudinary.com/crunchbase-production/image/upload/c_lpad,h_256,w_256,f_auto,q_auto:eco/v1423516711/gmr0yvf7endyoezjvlgm.jpg") // TSheets logo
+  }
+  
+ 
+   
+  
+  buildHomeCardSection1(selectedCompany){
+    let startDatePicker = CardService.newDatePicker()
+    .setTitle("Enter the start date.")
+    .setFieldName("param1")
+    // Set default value as Jan 1, 2018 UTC. Either a number or string is acceptable.
+    .setValueInMsSinceEpoch(1514775600)
+    .setOnChangeAction(CardService.newAction()
+                       .setFunctionName("addOnClassProxy")
+                       .setParameters({function:"dateTimeChange"}));
+    
+    let endDatePicker = CardService.newDatePicker()
+    .setTitle("Enter the end date.")
+    .setFieldName("param2")
+    // Set default value as Jan 1, 2018 UTC. Either a number or string is acceptable.
+    .setValueInMsSinceEpoch(1514775600)
+    .setOnChangeAction(CardService.newAction()
+                       .setFunctionName("addOnClassProxy")
+                       .setParameters({function:"dateTimeChange"}));  
+    
+    
+    
+    let customersWithTimesheets = this.db.getCustomersWithTimesheets(); 
+    
+    let companySelection = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.DROPDOWN)
+    .setTitle("Company")
+    .setFieldName("param1");
+    for(let customerName in customersWithTimesheets){
+      if(selectedCompany == customersWithTimesheets[customerName].id){
+        companySelection.addItem(customerName, customersWithTimesheets[customerName].id, true)
+      } else {
+        companySelection.addItem(customerName, customersWithTimesheets[customerName].id, false)
+      }
+      
+    }
+    companySelection.setOnChangeAction(CardService.newAction()
+                                       .setFunctionName("addOnClassProxy")
+                                       .setLoadIndicator(CardService.LoadIndicator.SPINNER)
+                                       .setParameters({function:"companySelection"}));
+    
+    this.homeCardSection1 = CardService.newCardSection()
+      .addWidget(startDatePicker)
+      .addWidget(endDatePicker)
+      .addWidget(companySelection);
+  }
+  
+  handleDateTimeChange(date, which){
+  }
+  
+  handleCompanySelection(companyId){
+    myLog('in company selection handler');
+    //var companyId = res['selected_company'];
+    
+    this.homeCardSection2 = CardService.newCardSection();
+      
+   
+    var projects = this.db.getCustomerProjects(companyId); 
+    myLog(JSON.stringify(projects))
+    //let multilineKeyValue = {};
+  
+    let index = 0;
+    for(let k in projects){
+      index++;
+      let project = projects[k];
+      
+      let multilineKeyValue = CardService.newKeyValue()
+      .setIconUrl("https://ui-avatars.com/api/?name=" + index + "&size=128&font-size=0.8&rounded=true")
+      .setTopLabel("total cost: $" + project.totalCost.toFixed(2) + " / total hours: " + project.totalHours.toFixed(2) + 'h')
+      .setContent(project.name)
+      .setMultiline(true)
+      .setBottomLabel("start date here")
+      
+      this.homeCardSection2.addWidget(multilineKeyValue)
+    }
+      
+      this.homeCard = this.buildHomeCard(companyId);
+      this.homeCard.addSection(this.homeCardSection2);
+      return this.updateCard(this.homeCard.build());
+      
+    
+ 
+  }
+  
 }
 
+function addOnClassProxy(e){ // can't assign a this.[method_name] to a card action, this proxy helps resolve the problem
+  myLog('in proxy, e: ' + JSON.stringify(e));
+  
+  addOn = new addOnCommon();
+  let homeCard = addOn.buildHomeCard();
+  
+  let functionToExec = e.parameters.function
+  var inputs = e.formInputs;
+  //var functionToExec = params['function'];
+  
+  let param1 = '';
+  let param2 = '';
+  
+  if(inputs.hasOwnProperty('param1')){
+    param1 = inputs['param1'][0];
+  }
+  
+  if(inputs.hasOwnProperty('param2')){
+    param2 = inputs['param2'][0];
+  }
+  
+  myLog('function: ' + functionToExec + ', param: ' + param1)
+  //let param = params['param']
+  myLog('addOn: ' + JSON.stringify(addOn));
+  switch(functionToExec){
+      
+    case 'dateTimeChange':
+      if(param1!=''){
+        addOn.handleDateTimeChange(param1, 'start');
+      } else if(param2!=''){
+        addOn.handleDateTimeChange(param2, 'end');
+      }
+      
+      break;
+      
+    case 'companySelection':
+      if(param1!=''){
+        myLog('executing company selection ' + param1);
+        return addOn.handleCompanySelection(param1);
+      }
+      
+      break;
+  }
+  
+}
+
+
+
 function createHomeCard(){
+  let db = new dbOperations();
+  let customersWithTimesheets = db.getCustomersWithTimesheets(); 
+  
   //create card header
    let cardHeader = CardService.newCardHeader()
     .setTitle("Projects")
@@ -60,11 +234,22 @@ function createHomeCard(){
     .setOnChangeAction(CardService.newAction()
         .setFunctionName("handleDateTimeChange"));  
  
+  var companySelection = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.DROPDOWN)
+    .setTitle("Company")
+    .setFieldName("selected_company");
+  for(let customerName in customersWithTimesheets){
+    companySelection.addItem(customerName, customersWithTimesheets[customerName].id, false)
+  }
+  companySelection.setOnChangeAction(CardService.newAction()
+        .setFunctionName("handleCompanySelection")
+        .setParameters({comapnySelected: companySelection.company_field}));
   
   // Assemble the widgets and return the card.
   let section1 = CardService.newCardSection()
       .addWidget(startDatePicker)
-      .addWidget(endDatePicker);
+      .addWidget(endDatePicker)
+      .addWidget(companySelection);
   
   
     
@@ -92,6 +277,8 @@ function createHomeCard(){
   
   return card;
 }
+
+
 
 function homeCards(){
   let cards = [];
